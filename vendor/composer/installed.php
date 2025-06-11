@@ -3,7 +3,7 @@
         'name' => 'graham-campbell/result-type',
         'pretty_version' => 'dev-master',
         'version' => 'dev-master',
-        'reference' => '447459d8609313564d0af6be8e5b97e35f290a68',
+        'reference' => 'b8c76c0a197ab24321814765a9a98684a133014e',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'graham-campbell/result-type' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '447459d8609313564d0af6be8e5b97e35f290a68',
+            'reference' => 'b8c76c0a197ab24321814765a9a98684a133014e',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

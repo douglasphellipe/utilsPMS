@@ -25,12 +25,15 @@ class ComposerStaticInitaf385e5fc75d636d14edf15e518efe45
         'G' => 
         array (
             'GrahamCampbell\\Tests\\ResultType\\' => 32,
-            'GrahamCampbell\\ResultType\\' => 26,
         ),
         'D' => 
         array (
             'Dotenv\\' => 7,
             'DeepCopy\\' => 9,
+        ),
+        'A' => 
+        array (
+            'App\\' => 4,
         ),
     );
 
@@ -51,10 +54,6 @@ class ComposerStaticInitaf385e5fc75d636d14edf15e518efe45
         array (
             0 => __DIR__ . '/../..' . '/tests',
         ),
-        'GrahamCampbell\\ResultType\\' => 
-        array (
-            0 => __DIR__ . '/../..' . '/src',
-        ),
         'Dotenv\\' => 
         array (
             0 => __DIR__ . '/..' . '/vlucas/phpdotenv/src',
@@ -62,6 +61,10 @@ class ComposerStaticInitaf385e5fc75d636d14edf15e518efe45
         'DeepCopy\\' => 
         array (
             0 => __DIR__ . '/..' . '/myclabs/deep-copy/src/DeepCopy',
+        ),
+        'App\\' => 
+        array (
+            0 => __DIR__ . '/../..' . '/app',
         ),
     );
 
