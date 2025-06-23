@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of sebastian/global-state.
  *
@@ -7,53 +7,89 @@
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
+
+declare(strict_types=1);
+
 namespace SebastianBergmann\GlobalState;
 
-use function array_keys;
-use function array_merge;
-use function array_reverse;
-use function assert;
-use function func_get_args;
-use function get_declared_classes;
-use function get_declared_interfaces;
-use function get_declared_traits;
-use function get_defined_constants;
-use function get_defined_functions;
-use function get_included_files;
-use function in_array;
-use function ini_get_all;
-use function is_array;
-use function is_object;
-use function is_resource;
-use function is_scalar;
-use function serialize;
-use function unserialize;
 use ReflectionClass;
-use SebastianBergmann\ObjectReflector\ObjectReflector;
-use SebastianBergmann\RecursionContext\Context;
-use Throwable;
+use Serializable;
 
 /**
  * A snapshot of global state.
  */
 class Snapshot
 {
-    private ExcludeList $excludeList;
-    private array $globalVariables      = [];
-    private array $superGlobalArrays    = [];
-    private array $superGlobalVariables = [];
-    private array $staticProperties     = [];
-    private array $iniSettings          = [];
-    private array $includedFiles        = [];
-    private array $constants            = [];
-    private array $functions            = [];
-    private array $interfaces           = [];
-    private array $classes              = [];
-    private array $traits               = [];
+    /**
+     * @var Blacklist
+     */
+    private $blacklist;
 
-    public function __construct(?ExcludeList $excludeList = null, bool $includeGlobalVariables = true, bool $includeStaticProperties = true, bool $includeConstants = true, bool $includeFunctions = true, bool $includeClasses = true, bool $includeInterfaces = true, bool $includeTraits = true, bool $includeIniSettings = true, bool $includeIncludedFiles = true)
+    /**
+     * @var array
+     */
+    private $globalVariables = [];
+
+    /**
+     * @var array
+     */
+    private $superGlobalArrays = [];
+
+    /**
+     * @var array
+     */
+    private $superGlobalVariables = [];
+
+    /**
+     * @var array
+     */
+    private $staticAttributes = [];
+
+    /**
+     * @var array
+     */
+    private $iniSettings = [];
+
+    /**
+     * @var array
+     */
+    private $includedFiles = [];
+
+    /**
+     * @var array
+     */
+    private $constants = [];
+
+    /**
+     * @var array
+     */
+    private $functions = [];
+
+    /**
+     * @var array
+     */
+    private $interfaces = [];
+
+    /**
+     * @var array
+     */
+    private $classes = [];
+
+    /**
+     * @var array
+     */
+    private $traits = [];
+
+    /**
+     * Creates a snapshot of the current global state.
+     */
+    public function __construct(Blacklist $blacklist = null, bool $includeGlobalVariables = true, bool $includeStaticAttributes = true, bool $includeConstants = true, bool $includeFunctions = true, bool $includeClasses = true, bool $includeInterfaces = true, bool $includeTraits = true, bool $includeIniSettings = true, bool $includeIncludedFiles = true)
     {
-        $this->excludeList = $excludeList ?: new ExcludeList;
+        if ($blacklist === null) {
+            $blacklist = new Blacklist;
+        }
+
+        $this->blacklist = $blacklist;
 
         if ($includeConstants) {
             $this->snapshotConstants();
@@ -63,7 +99,7 @@ class Snapshot
             $this->snapshotFunctions();
         }
 
-        if ($includeClasses || $includeStaticProperties) {
+        if ($includeClasses || $includeStaticAttributes) {
             $this->snapshotClasses();
         }
 
@@ -76,26 +112,24 @@ class Snapshot
             $this->snapshotGlobals();
         }
 
-        if ($includeStaticProperties) {
-            $this->snapshotStaticProperties();
+        if ($includeStaticAttributes) {
+            $this->snapshotStaticAttributes();
         }
 
         if ($includeIniSettings) {
-            $this->iniSettings = ini_get_all(null, false);
+            $this->iniSettings = \ini_get_all(null, false);
         }
 
         if ($includeIncludedFiles) {
-            $this->includedFiles = get_included_files();
+            $this->includedFiles = \get_included_files();
         }
 
-        if ($includeTraits) {
-            $this->traits = get_declared_traits();
-        }
+        $this->traits = \get_declared_traits();
     }
 
-    public function excludeList(): ExcludeList
+    public function blacklist(): Blacklist
     {
-        return $this->excludeList;
+        return $this->blacklist;
     }
 
     public function globalVariables(): array
@@ -113,9 +147,9 @@ class Snapshot
         return $this->superGlobalArrays;
     }
 
-    public function staticProperties(): array
+    public function staticAttributes(): array
     {
-        return $this->staticProperties;
+        return $this->staticAttributes;
     }
 
     public function iniSettings(): array
@@ -153,25 +187,34 @@ class Snapshot
         return $this->traits;
     }
 
-    private function snapshotConstants(): void
+    /**
+     * Creates a snapshot user-defined constants.
+     */
+    private function snapshotConstants()
     {
-        $constants = get_defined_constants(true);
+        $constants = \get_defined_constants(true);
 
         if (isset($constants['user'])) {
             $this->constants = $constants['user'];
         }
     }
 
-    private function snapshotFunctions(): void
+    /**
+     * Creates a snapshot user-defined functions.
+     */
+    private function snapshotFunctions()
     {
-        $functions = get_defined_functions();
+        $functions = \get_defined_functions();
 
         $this->functions = $functions['user'];
     }
 
-    private function snapshotClasses(): void
+    /**
+     * Creates a snapshot user-defined classes.
+     */
+    private function snapshotClasses()
     {
-        foreach (array_reverse(get_declared_classes()) as $className) {
+        foreach (\array_reverse(\get_declared_classes()) as $className) {
             $class = new ReflectionClass($className);
 
             if (!$class->isUserDefined()) {
@@ -181,12 +224,15 @@ class Snapshot
             $this->classes[] = $className;
         }
 
-        $this->classes = array_reverse($this->classes);
+        $this->classes = \array_reverse($this->classes);
     }
 
-    private function snapshotInterfaces(): void
+    /**
+     * Creates a snapshot user-defined interfaces.
+     */
+    private function snapshotInterfaces()
     {
-        foreach (array_reverse(get_declared_interfaces()) as $interfaceName) {
+        foreach (\array_reverse(\get_declared_interfaces()) as $interfaceName) {
             $class = new ReflectionClass($interfaceName);
 
             if (!$class->isUserDefined()) {
@@ -196,10 +242,13 @@ class Snapshot
             $this->interfaces[] = $interfaceName;
         }
 
-        $this->interfaces = array_reverse($this->interfaces);
+        $this->interfaces = \array_reverse($this->interfaces);
     }
 
-    private function snapshotGlobals(): void
+    /**
+     * Creates a snapshot of all global and super-global variables.
+     */
+    private function snapshotGlobals()
     {
         $superGlobalArrays = $this->superGlobalArrays();
 
@@ -207,63 +256,66 @@ class Snapshot
             $this->snapshotSuperGlobalArray($superGlobalArray);
         }
 
-        foreach (array_keys($GLOBALS) as $key) {
-            if ($key !== 'GLOBALS' &&
-                !in_array($key, $superGlobalArrays, true) &&
+        foreach (\array_keys($GLOBALS) as $key) {
+            if ($key != 'GLOBALS' &&
+                !\in_array($key, $superGlobalArrays) &&
                 $this->canBeSerialized($GLOBALS[$key]) &&
-                !$this->excludeList->isGlobalVariableExcluded($key)) {
-                /* @noinspection UnserializeExploitsInspection */
-                $this->globalVariables[$key] = unserialize(serialize($GLOBALS[$key]));
+                !$this->blacklist->isGlobalVariableBlacklisted($key)) {
+                $this->globalVariables[$key] = \unserialize(\serialize($GLOBALS[$key]));
             }
         }
     }
 
-    private function snapshotSuperGlobalArray(string $superGlobalArray): void
+    /**
+     * Creates a snapshot a super-global variable array.
+     */
+    private function snapshotSuperGlobalArray(string $superGlobalArray)
     {
         $this->superGlobalVariables[$superGlobalArray] = [];
 
-        if (isset($GLOBALS[$superGlobalArray]) && is_array($GLOBALS[$superGlobalArray])) {
+        if (isset($GLOBALS[$superGlobalArray]) && \is_array($GLOBALS[$superGlobalArray])) {
             foreach ($GLOBALS[$superGlobalArray] as $key => $value) {
-                /* @noinspection UnserializeExploitsInspection */
-                $this->superGlobalVariables[$superGlobalArray][$key] = unserialize(serialize($value));
+                $this->superGlobalVariables[$superGlobalArray][$key] = \unserialize(\serialize($value));
             }
         }
     }
 
-    private function snapshotStaticProperties(): void
+    /**
+     * Creates a snapshot of all static attributes in user-defined classes.
+     */
+    private function snapshotStaticAttributes()
     {
         foreach ($this->classes as $className) {
             $class    = new ReflectionClass($className);
             $snapshot = [];
 
-            foreach ($class->getProperties() as $property) {
-                if ($property->isStatic()) {
-                    $name = $property->getName();
+            foreach ($class->getProperties() as $attribute) {
+                if ($attribute->isStatic()) {
+                    $name = $attribute->getName();
 
-                    if ($this->excludeList->isStaticPropertyExcluded($className, $name)) {
+                    if ($this->blacklist->isStaticAttributeBlacklisted($className, $name)) {
                         continue;
                     }
 
-                    if (!$property->isInitialized()) {
-                        continue;
-                    }
-
-                    $value = $property->getValue();
+                    $attribute->setAccessible(true);
+                    $value = $attribute->getValue();
 
                     if ($this->canBeSerialized($value)) {
-                        /* @noinspection UnserializeExploitsInspection */
-                        $snapshot[$name] = unserialize(serialize($value));
+                        $snapshot[$name] = \unserialize(\serialize($value));
                     }
                 }
             }
 
             if (!empty($snapshot)) {
-                $this->staticProperties[$className] = $snapshot;
+                $this->staticAttributes[$className] = $snapshot;
             }
         }
     }
 
-    private function setupSuperGlobalArrays(): void
+    /**
+     * Returns a list of all super-global variable arrays.
+     */
+    private function setupSuperGlobalArrays()
     {
         $this->superGlobalArrays = [
             '_ENV',
@@ -272,100 +324,45 @@ class Snapshot
             '_COOKIE',
             '_SERVER',
             '_FILES',
-            '_REQUEST',
+            '_REQUEST'
         ];
+
+        if (\ini_get('register_long_arrays') == '1') {
+            $this->superGlobalArrays = \array_merge(
+                $this->superGlobalArrays,
+                [
+                    'HTTP_ENV_VARS',
+                    'HTTP_POST_VARS',
+                    'HTTP_GET_VARS',
+                    'HTTP_COOKIE_VARS',
+                    'HTTP_SERVER_VARS',
+                    'HTTP_POST_FILES'
+                ]
+            );
+        }
     }
 
-    private function canBeSerialized(mixed $variable): bool
+    /**
+     * @todo Implement this properly
+     */
+    private function canBeSerialized($variable): bool
     {
-        if (is_scalar($variable) || $variable === null) {
+        if (!\is_object($variable)) {
+            return !\is_resource($variable);
+        }
+
+        if ($variable instanceof \stdClass) {
             return true;
         }
 
-        if (is_resource($variable)) {
-            return false;
-        }
+        $class = new ReflectionClass($variable);
 
-        foreach ($this->enumerateObjectsAndResources($variable) as $value) {
-            if (is_resource($value)) {
-                return false;
+        do {
+            if ($class->isInternal()) {
+                return $variable instanceof Serializable;
             }
-
-            if (is_object($value)) {
-                $class = new ReflectionClass($value);
-
-                if ($class->isAnonymous()) {
-                    return false;
-                }
-
-                try {
-                    @serialize($value);
-                } catch (Throwable $t) {
-                    return false;
-                }
-            }
-        }
+        } while ($class = $class->getParentClass());
 
         return true;
-    }
-
-    private function enumerateObjectsAndResources(mixed $variable): array
-    {
-        if (isset(func_get_args()[1])) {
-            $processed = func_get_args()[1];
-        } else {
-            $processed = new Context;
-        }
-
-        assert($processed instanceof Context);
-
-        $result = [];
-
-        if ($processed->contains($variable)) {
-            return $result;
-        }
-
-        $array = $variable;
-
-        /* @noinspection UnusedFunctionResultInspection */
-        $processed->add($variable);
-
-        if (is_array($variable)) {
-            foreach ($array as $element) {
-                if (!is_array($element) && !is_object($element) && !is_resource($element)) {
-                    continue;
-                }
-
-                if (!is_resource($element)) {
-                    /** @noinspection SlowArrayOperationsInLoopInspection */
-                    $result = array_merge(
-                        $result,
-                        $this->enumerateObjectsAndResources($element, $processed),
-                    );
-                } else {
-                    $result[] = $element;
-                }
-            }
-        } else {
-            $result[] = $variable;
-
-            foreach ((new ObjectReflector)->getProperties($variable) as $value) {
-                if (!is_array($value) && !is_object($value) && !is_resource($value)) {
-                    continue;
-                }
-
-                if (!is_resource($value)) {
-                    /** @noinspection SlowArrayOperationsInLoopInspection */
-                    $result = array_merge(
-                        $result,
-                        $this->enumerateObjectsAndResources($value, $processed),
-                    );
-                } else {
-                    $result[] = $value;
-                }
-            }
-        }
-
-        return $result;
     }
 }

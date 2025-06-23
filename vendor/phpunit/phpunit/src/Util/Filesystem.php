@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of PHPUnit.
  *
@@ -7,45 +7,34 @@
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
  */
+
 namespace PHPUnit\Util;
 
-use const DIRECTORY_SEPARATOR;
-use function basename;
-use function dirname;
-use function is_dir;
-use function mkdir;
-use function realpath;
-use function str_starts_with;
-
 /**
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
- *
- * @internal This class is not covered by the backward compatibility promise for PHPUnit
+ * Filesystem helpers.
  */
-final class Filesystem
+class Filesystem
 {
-    public static function createDirectory(string $directory): bool
-    {
-        return !(!is_dir($directory) && !@mkdir($directory, 0o777, true) && !is_dir($directory));
-    }
+    /**
+     * @var array
+     */
+    protected static $buffer = [];
 
     /**
-     * @psalm-param non-empty-string $path
+     * Maps class names to source file names:
+     *   - PEAR CS:   Foo_Bar_Baz -> Foo/Bar/Baz.php
+     *   - Namespace: Foo\Bar\Baz -> Foo/Bar/Baz.php
      *
-     * @return false|non-empty-string
+     * @param string $className
+     *
+     * @return string
      */
-    public static function resolveStreamOrFile(string $path): false|string
+    public static function classNameToFilename($className)
     {
-        if (str_starts_with($path, 'php://') || str_starts_with($path, 'socket://')) {
-            return $path;
-        }
-
-        $directory = dirname($path);
-
-        if (is_dir($directory)) {
-            return realpath($directory) . DIRECTORY_SEPARATOR . basename($path);
-        }
-
-        return false;
+        return \str_replace(
+            ['_', '\\'],
+            DIRECTORY_SEPARATOR,
+            $className
+        ) . '.php';
     }
 }

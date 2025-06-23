@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of PHPUnit.
  *
@@ -9,42 +9,84 @@
  */
 namespace PHPUnit\Runner\Filter;
 
-use function end;
-use function implode;
-use function preg_match;
-use function sprintf;
-use function str_replace;
-use function substr;
-use Exception;
-use PHPUnit\Framework\SelfDescribing;
-use PHPUnit\Framework\Test;
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\TestSuite;
+use PHPUnit\Framework\WarningTestCase;
+use PHPUnit\Util\RegularExpression;
 use RecursiveFilterIterator;
 use RecursiveIterator;
 
-/**
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
- *
- * @internal This class is not covered by the backward compatibility promise for PHPUnit
- */
-final class NameFilterIterator extends RecursiveFilterIterator
+class NameFilterIterator extends RecursiveFilterIterator
 {
-    private ?string $filter = null;
-    private ?int $filterMin = null;
-    private ?int $filterMax = null;
+    /**
+     * @var string
+     */
+    protected $filter;
 
     /**
-     * @psalm-param RecursiveIterator<int, Test> $iterator
-     * @psalm-param non-empty-string $filter
-     *
-     * @throws Exception
+     * @var int
      */
-    public function __construct(RecursiveIterator $iterator, string $filter)
+    protected $filterMin;
+    /**
+     * @var int
+     */
+    protected $filterMax;
+
+    /**
+     * @param RecursiveIterator $iterator
+     * @param string            $filter
+     */
+    public function __construct(RecursiveIterator $iterator, $filter)
     {
         parent::__construct($iterator);
-
         $this->setFilter($filter);
+    }
+
+    /**
+     * @param string $filter
+     */
+    protected function setFilter($filter)
+    {
+        if (RegularExpression::safeMatch($filter, '') === false) {
+            // Handles:
+            //  * testAssertEqualsSucceeds#4
+            //  * testAssertEqualsSucceeds#4-8
+            if (\preg_match('/^(.*?)#(\d+)(?:-(\d+))?$/', $filter, $matches)) {
+                if (isset($matches[3]) && $matches[2] < $matches[3]) {
+                    $filter = \sprintf(
+                        '%s.*with data set #(\d+)$',
+                        $matches[1]
+                    );
+
+                    $this->filterMin = $matches[2];
+                    $this->filterMax = $matches[3];
+                } else {
+                    $filter = \sprintf(
+                        '%s.*with data set #%s$',
+                        $matches[1],
+                        $matches[2]
+                    );
+                }
+            } // Handles:
+            //  * testDetermineJsonError@JSON_ERROR_NONE
+            //  * testDetermineJsonError@JSON.*
+            elseif (\preg_match('/^(.*?)@(.+)$/', $filter, $matches)) {
+                $filter = \sprintf(
+                    '%s.*with data set "%s"$',
+                    $matches[1],
+                    $matches[2]
+                );
+            }
+
+            // Escape delimiters in regular expression. Do NOT use preg_quote,
+            // to keep magic characters.
+            $filter = \sprintf('/%s/i', \str_replace(
+                '/',
+                '\\/',
+                $filter
+            ));
+        }
+
+        $this->filter = $filter;
     }
 
     public function accept(): bool
@@ -55,88 +97,25 @@ final class NameFilterIterator extends RecursiveFilterIterator
             return true;
         }
 
-        $tmp = $this->describe($test);
+        $tmp = \PHPUnit\Util\Test::describe($test, false);
 
-        if ($tmp[0] !== '') {
-            $name = implode('::', $tmp);
+        if ($test instanceof WarningTestCase) {
+            $name = $test->getMessage();
         } else {
-            $name = $tmp[1];
+            if ($tmp[0] !== '') {
+                $name = \implode('::', $tmp);
+            } else {
+                $name = $tmp[1];
+            }
         }
 
-        $accepted = @preg_match($this->filter, $name, $matches);
+        $accepted = @\preg_match($this->filter, $name, $matches);
 
         if ($accepted && isset($this->filterMax)) {
-            $set      = end($matches);
+            $set      = \end($matches);
             $accepted = $set >= $this->filterMin && $set <= $this->filterMax;
         }
 
         return (bool) $accepted;
-    }
-
-    /**
-     * @throws Exception
-     */
-    private function setFilter(string $filter): void
-    {
-        if (preg_match('/[a-zA-Z0-9]/', substr($filter, 0, 1)) === 1 || @preg_match($filter, '') === false) {
-            // Handles:
-            //  * testAssertEqualsSucceeds#4
-            //  * testAssertEqualsSucceeds#4-8
-            if (preg_match('/^(.*?)#(\d+)(?:-(\d+))?$/', $filter, $matches)) {
-                if (isset($matches[3]) && $matches[2] < $matches[3]) {
-                    $filter = sprintf(
-                        '%s.*with data set #(\d+)$',
-                        $matches[1],
-                    );
-
-                    $this->filterMin = (int) $matches[2];
-                    $this->filterMax = (int) $matches[3];
-                } else {
-                    $filter = sprintf(
-                        '%s.*with data set #%s$',
-                        $matches[1],
-                        $matches[2],
-                    );
-                }
-            } // Handles:
-            //  * testDetermineJsonError@JSON_ERROR_NONE
-            //  * testDetermineJsonError@JSON.*
-            elseif (preg_match('/^(.*?)@(.+)$/', $filter, $matches)) {
-                $filter = sprintf(
-                    '%s.*with data set "%s"$',
-                    $matches[1],
-                    $matches[2],
-                );
-            }
-
-            // Escape delimiters in regular expression. Do NOT use preg_quote,
-            // to keep magic characters.
-            $filter = sprintf(
-                '/%s/i',
-                str_replace(
-                    '/',
-                    '\\/',
-                    $filter,
-                ),
-            );
-        }
-
-        $this->filter = $filter;
-    }
-
-    /**
-     * @psalm-return array{0: string, 1: string}
-     */
-    private function describe(Test $test): array
-    {
-        if ($test instanceof TestCase) {
-            return [$test::class, $test->nameWithDataSet()];
-        }
-
-        if ($test instanceof SelfDescribing) {
-            return ['', $test->toString()];
-        }
-
-        return ['', $test::class];
     }
 }

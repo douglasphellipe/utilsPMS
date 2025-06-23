@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of PHPUnit.
  *
@@ -9,34 +9,29 @@
  */
 namespace PHPUnit\Framework\Constraint;
 
-use function json_decode;
-use function sprintf;
 use PHPUnit\Framework\ExpectationFailedException;
-use PHPUnit\Util\InvalidJsonException;
 use PHPUnit\Util\Json;
 use SebastianBergmann\Comparator\ComparisonFailure;
 
 /**
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
+ * Asserts whether or not two JSON objects are equal.
  */
-final class JsonMatches extends Constraint
+class JsonMatches extends Constraint
 {
-    private readonly string $value;
-
-    public function __construct(string $value)
-    {
-        $this->value = $value;
-    }
+    /**
+     * @var string
+     */
+    protected $value;
 
     /**
-     * Returns a string representation of the object.
+     * Creates a new constraint.
+     *
+     * @param string $value
      */
-    public function toString(): string
+    public function __construct($value)
     {
-        return sprintf(
-            'matches JSON string "%s"',
-            $this->value,
-        );
+        parent::__construct();
+        $this->value = $value;
     }
 
     /**
@@ -44,17 +39,19 @@ final class JsonMatches extends Constraint
      * constraint is met, false otherwise.
      *
      * This method can be overridden to implement the evaluation algorithm.
+     *
+     * @param mixed $other Value or object to evaluate.
+     *
+     * @return bool
      */
-    protected function matches(mixed $other): bool
+    protected function matches($other)
     {
-        [$error, $recodedOther] = Json::canonicalize($other);
-
+        list($error, $recodedOther) = Json::canonicalize($other);
         if ($error) {
             return false;
         }
 
-        [$error, $recodedValue] = Json::canonicalize($this->value);
-
+        list($error, $recodedValue) = Json::canonicalize($this->value);
         if ($error) {
             return false;
         }
@@ -63,35 +60,54 @@ final class JsonMatches extends Constraint
     }
 
     /**
-     * Throws an exception for the given compared value and test description.
+     * Throws an exception for the given compared value and test description
+     *
+     * @param mixed             $other             Evaluated value or object.
+     * @param string            $description       Additional information about the test
+     * @param ComparisonFailure $comparisonFailure
      *
      * @throws ExpectationFailedException
-     * @throws InvalidJsonException
      */
-    protected function fail(mixed $other, string $description, ?ComparisonFailure $comparisonFailure = null): never
+    protected function fail($other, $description, ComparisonFailure $comparisonFailure = null)
     {
         if ($comparisonFailure === null) {
-            [$error, $recodedOther] = Json::canonicalize($other);
-
+            list($error) = Json::canonicalize($other);
             if ($error) {
                 parent::fail($other, $description);
+
+                return;
             }
 
-            [$error, $recodedValue] = Json::canonicalize($this->value);
-
+            list($error) = Json::canonicalize($this->value);
             if ($error) {
                 parent::fail($other, $description);
+
+                return;
             }
 
             $comparisonFailure = new ComparisonFailure(
-                json_decode($this->value),
-                json_decode($other),
-                Json::prettify($recodedValue),
-                Json::prettify($recodedOther),
-                'Failed asserting that two json values are equal.',
+                \json_decode($this->value),
+                \json_decode($other),
+                Json::prettify($this->value),
+                Json::prettify($other),
+                false,
+                'Failed asserting that two json values are equal.'
             );
         }
 
         parent::fail($other, $description, $comparisonFailure);
+    }
+
+    /**
+     * Returns a string representation of the object.
+     *
+     * @return string
+     */
+    public function toString()
+    {
+        return \sprintf(
+            'matches JSON string "%s"',
+            $this->value
+        );
     }
 }

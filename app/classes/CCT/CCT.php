@@ -1,6 +1,6 @@
 <?php
 
-namespace app\classes\CCT;
+namespace App\classes\CCT;
 
 use Exception;
 

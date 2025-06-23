@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of PHPUnit.
  *
@@ -9,48 +9,44 @@
  */
 namespace PHPUnit\Runner\Filter;
 
-use function array_map;
-use function array_push;
-use function in_array;
-use function spl_object_id;
-use PHPUnit\Framework\Test;
 use PHPUnit\Framework\TestSuite;
 use RecursiveFilterIterator;
 use RecursiveIterator;
 
-/**
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
- *
- * @internal This class is not covered by the backward compatibility promise for PHPUnit
- */
 abstract class GroupFilterIterator extends RecursiveFilterIterator
 {
     /**
-     * @psalm-var list<int>
+     * @var array
      */
-    protected array $groupTests = [];
+    protected $groupTests = [];
 
     /**
-     * @psalm-param RecursiveIterator<int, Test> $iterator
-     * @psalm-param list<non-empty-string> $groups
+     * @param RecursiveIterator $iterator
+     * @param array             $groups
+     * @param TestSuite         $suite
      */
     public function __construct(RecursiveIterator $iterator, array $groups, TestSuite $suite)
     {
         parent::__construct($iterator);
 
-        foreach ($suite->groupDetails() as $group => $tests) {
-            if (in_array((string) $group, $groups, true)) {
-                $testHashes = array_map(
-                    'spl_object_id',
-                    $tests,
+        foreach ($suite->getGroupDetails() as $group => $tests) {
+            if (\in_array($group, $groups)) {
+                $testHashes = \array_map(
+                    function ($test) {
+                        return \spl_object_hash($test);
+                    },
+                    $tests
                 );
 
-                array_push($this->groupTests, ...$testHashes);
+                $this->groupTests = \array_merge($this->groupTests, $testHashes);
             }
         }
     }
 
-    public function accept(): bool
+    /**
+     * @return bool
+     */
+    public function accept()
     {
         $test = $this->getInnerIterator()->current();
 
@@ -58,8 +54,8 @@ abstract class GroupFilterIterator extends RecursiveFilterIterator
             return true;
         }
 
-        return $this->doAccept(spl_object_id($test));
+        return $this->doAccept(\spl_object_hash($test));
     }
 
-    abstract protected function doAccept(int $id): bool;
+    abstract protected function doAccept($hash);
 }

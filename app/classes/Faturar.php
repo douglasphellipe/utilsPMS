@@ -4,30 +4,19 @@ namespace App\Classes;
 
 use PDO;
 use Exception;
+use App\Classes;
 class Faturar
 {
-  public $servidorbd;
-  public $usuariobd;
-  public $senhabd;
-  public $bancobd;
   public $CONEXAO;
 
-    public function __construct($servidorbd, $usuariobd, $senhabd, $bancobd)
+    public function __construct()
     {
-        $this->servidorbd = $servidorbd;
-        $this->usuariobd = $usuariobd;
-        $this->senhabd = $senhabd;
-        $this->bancobd = $bancobd;
-        date_default_timezone_set('America/Sao_Paulo');
-        try {
-            $this->CONEXAO = new PDO("mysql:host=$this->servidorbd;dbname=$this->bancobd", $this->usuariobd, $this->senhabd);
-        } catch (Exception $erro) {
-            echo "Erro conexão: " . $erro->getMessage();
-            exit;
-        }
+         $conexao = new Conexao();
+        $this->CONEXAO = $conexao->CONEXAO;
     }
     function gera_pedidoentradaclienteComSerial($id_nfe, $login)
     {
+        $entradas = new Entradas();
         $sql = "SELECT 
                             temp_nfe_entradas.num_doc AS NF,
                             temp_nfe_entradas.emit_xnome AS `CLIENT`
@@ -53,10 +42,17 @@ class Faturar
         $LD = $R->fetch(PDO::FETCH_ASSOC);
         $l['ImportDeclaration'] = $LD['nDI'];
         //$l['chv_nfe'] = $id_nfe;
-      
+
         $Id = $this->executa_insert($l, $this->campos_tb_stock, 'tb_stockSupply');
 
         if ($Id > 0) {
+          $Tarefas = new Tarefas();
+          $dadosTarefa = [
+            'nf' => $l['NF'],
+            'idSupply' => $Id,
+            'nome' => 'Conferencia '.$l['NF']
+          ];
+          $tarefa = $Tarefas->geraTarefa($dadosTarefa);
           $sql_itens = "SELECT 
                     produtos.PartNumber AS PartNumber,
                     produtos.cd_produto AS Cod_Produto,
@@ -85,43 +81,92 @@ class Faturar
           $res_itens = $this->CONEXAO->query($sql_itens);
           while ($litens = $res_itens->fetch(PDO::FETCH_ASSOC)) {
                 $litens['Id'] = $Id;
-                $litens['Site'] = 'GOOD';
+                $litens['Site'] = 'GOOD'; 
                 if (empty($litens['SSL'])) {
                   $litens['SSL'] = 'VAZIO';
                 }
                 //$this->debug($litens);
                 $idPN = $this->executa_insert($litens, $this->campos_tb_stockitens, 'tb_stockSupplyItens');
-                if($idPN > 0){
+                $qtdFracionada = $entradas->atribuiQtdSeriais($litens['Cod_Produto'], $litens['Qty']);
+               
+                if ($idPN > 0) {
                   $sqlItens = "
-                  SELECT tb_stockSupplyItens.PartNumber, num_lote AS Barcode, data_fab, data_val AS Validity, qtd_lote FROM temp_nfe_entradas 
-                  INNER JOIN temp_nfe_entradas_itens ON temp_nfe_entradas_itens.chv_nfe = temp_nfe_entradas.chv_nfe 
-                  INNER JOIN tb_stockSupply ON tb_stockSupply.NF = temp_nfe_entradas.num_doc 
-                  LEFT JOIN tb_stockSupplyItens ON tb_stockSupplyItens.Id = tb_stockSupply.Id
-                  WHERE temp_nfe_entradas_itens.chv_nfe = '" . $id_nfe . "' AND tb_stockSupplyItens.IdPN = " . $idPN ;
-                
-                  $resPN = $this->CONEXAO->query($sqlItens);
-                  while ($produto = $resPN->fetch(PDO::FETCH_ASSOC)) {
+                      SELECT 
+                          tb_stockSupplyItens.PartNumber, 
+                          num_lote AS Barcode, 
+                          data_fab, 
+                          data_val AS Validity, 
+                          qtd_lote 
+                      FROM temp_nfe_entradas 
+                      INNER JOIN temp_nfe_entradas_itens 
+                          ON temp_nfe_entradas_itens.chv_nfe = temp_nfe_entradas.chv_nfe 
+                      INNER JOIN tb_stockSupply 
+                          ON tb_stockSupply.NF = temp_nfe_entradas.num_doc 
+                      LEFT JOIN tb_stockSupplyItens 
+                          ON tb_stockSupplyItens.Id = tb_stockSupply.Id
+                      WHERE temp_nfe_entradas_itens.chv_nfe = '" . $id_nfe . "' 
+                        AND tb_stockSupplyItens.IdPN = " . $idPN;
 
-                    if (empty($produto['SSL'])) {
-                        $produto['SSL'] = 'VAZIO';
-                    }
-                    if (empty($produto['Barcode'])) {
-                        $produto['Barcode'] = '';
-                    }
-                
-                    $produto['IdPN'] = $idPN;
-                    $produto['BinLocation'] = 'RECEBIMENTO';
-                    $produto['Site'] = 'GOOD';
-                
-                    // Use 'qtd_lote' ou 'Qty' dependendo do significado correto
-                    $produto['SerialNumber'] = $this->geraSN();
-                    $this->executa_insert($produto, $this->campos_tb_stockitensSN, 'tb_stockSupplySN');
+                  // 1️⃣ Pega todos os lotes (Barcode)
+                  $lotes = [];
+                  $resPN = $this->CONEXAO->query($sqlItens);
+                  while ($lote = $resPN->fetch(PDO::FETCH_ASSOC)) {
+                      $lotes[] = $lote;
                   }
 
-                }
+                  // 2️⃣ Lista de quantidades de cada SN (vinda do seu atribuiQtdSeriais)
+                  $qtdSeriais = $qtdFracionada['QtdSeriais'];
+                  $indexSN = 0;  // aponta para o próximo SN a usar
+
+                  // 3️⃣ Distribui SNs sequencialmente pelos lotes
+                  foreach ($lotes as $lote) {
+                      while ($indexSN < count($qtdSeriais) && $lote['qtd_lote'] > 0) {
+                          $qtySN = $qtdSeriais[$indexSN];
+
+                          // Se o lote tiver quantidade suficiente para esse SN:
+                          if ($lote['qtd_lote'] >= $qtySN) {
+                              $produtoSN = [
+                                  'IdPN'         => $idPN,
+                                  'PartNumber'   => $litens['PartNumber'],
+                                  'Barcode'      => $lote['Barcode'],
+                                  'data_fab'     => $lote['data_fab'],
+                                  'Validity'     => $lote['Validity'],
+                                  'SerialNumber' => $entradas->geraPLBR(),
+                                  'Qty'          => $qtySN,
+                                  'BinLocation'  => 'BIN RECEBIMENTO',
+                                  'SSL'          => $litens['SSL'],
+                                  'Client'       => $litens['Client'],
+                                  'Site'         => $litens['Site']
+                              ];
+
+                              $idSN = $this->executa_insert($produtoSN, $this->campos_tb_stockitensSN, 'tb_stockSupplySN');
+                              $itensTarefa = [
+                                'idPN' => $idPN,
+                                'idSN' => $idSN,
+                                'PartNumber' => $produtoSN['PartNumber'],
+                                'Lote' => $produtoSN['Barcode'],
+                                'Serial' => $produtoSN['SerialNumber'],
+                                'dFab' => $produtoSN['data_fab'],
+                                'dVal' => $produtoSN['Validity'],
+                                'Qty' => $produtoSN['Qty'],
+                              ];
+                              print_r([$itensTarefa]);
+                              $Tarefas->criaItens($tarefa, [$itensTarefa]);
+                              // Atualiza o lote e o ponteiro do SN:
+                              $lote['qtd_lote'] -= $qtySN;
+                              $indexSN++;
+                          } else {
+                              // Se o lote não tiver quantidade suficiente, pula para o próximo lote
+                              break;
+                          }
+                      }
+                  }
+              }
+
+
             }
-              //$up = "UPDATE nfe_cab SET id_Supply = " . $Id . " WHERE id_nfe = " . $id_nfe;
-              //$this->CONEXAO->exec($up);
+              /*$up = "UPDATE nfe_cab SET id_Supply = " . $Id . " WHERE id_nfe = " . $id_nfe;
+              $this->CONEXAO->exec($up);*/
         }
         return $Id;
     }

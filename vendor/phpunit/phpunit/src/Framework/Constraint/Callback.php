@@ -1,4 +1,4 @@
-<?php declare(strict_types=1);
+<?php
 /*
  * This file is part of PHPUnit.
  *
@@ -9,65 +9,54 @@
  */
 namespace PHPUnit\Framework\Constraint;
 
-use Closure;
-use ReflectionFunction;
+use PHPUnit\Util\InvalidArgumentHelper;
 
 /**
- * @psalm-template CallbackInput of mixed
- *
- * @no-named-arguments Parameter names are not covered by the backward compatibility promise for PHPUnit
+ * Constraint that evaluates against a specified closure.
  */
-final class Callback extends Constraint
+class Callback extends Constraint
 {
-    /**
-     * @psalm-var callable(CallbackInput $input): bool
-     */
-    private readonly mixed $callback;
+    private $callback;
 
     /**
-     * @psalm-param callable(CallbackInput $input): bool $callback
+     * @param callable $callback
+     *
+     * @throws \PHPUnit\Framework\Exception
      */
-    public function __construct(callable $callback)
+    public function __construct($callback)
     {
-        $this->callback = $callback;
-    }
-
-    /**
-     * Returns a string representation of the constraint.
-     */
-    public function toString(): string
-    {
-        return 'is accepted by specified callback';
-    }
-
-    /**
-     * @psalm-suppress ArgumentTypeCoercion
-     */
-    public function isVariadic(): bool
-    {
-        foreach ((new ReflectionFunction(Closure::fromCallable($this->callback)))->getParameters() as $parameter) {
-            if ($parameter->isVariadic()) {
-                return true;
-            }
+        if (!\is_callable($callback)) {
+            throw InvalidArgumentHelper::factory(
+                1,
+                'callable'
+            );
         }
 
-        return false;
+        parent::__construct();
+
+        $this->callback = $callback;
     }
 
     /**
      * Evaluates the constraint for parameter $value. Returns true if the
      * constraint is met, false otherwise.
      *
-     * @psalm-param CallbackInput $other
+     * @param mixed $other Value or object to evaluate.
      *
-     * @psalm-suppress InvalidArgument
+     * @return bool
      */
-    protected function matches(mixed $other): bool
+    protected function matches($other)
     {
-        if ($this->isVariadic()) {
-            return ($this->callback)(...$other);
-        }
+        return \call_user_func($this->callback, $other);
+    }
 
-        return ($this->callback)($other);
+    /**
+     * Returns a string representation of the constraint.
+     *
+     * @return string
+     */
+    public function toString()
+    {
+        return 'is accepted by specified callback';
     }
 }
